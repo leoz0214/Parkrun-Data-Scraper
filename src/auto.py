@@ -1,12 +1,22 @@
 """Automatic collection of data given the event URL, using selenium."""
+import threading
 import tkinter as tk
+from tkinter import messagebox
 from tkinter import ttk
+
+from selenium.webdriver import Chrome, ChromeOptions
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait as Wait
+from selenium.common.exceptions import WebDriverException
 
 from utils import RED, GREEN
 
 
 MAX_URL_INPUT_LENGTH = 128
 LATEST_RESULTS_URL_FORMAT = "https://www.{domain}/{name}/results/eventhistory/"
+TIMEOUT = 15
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
 
 
 def parse_url(url: str) -> str:
@@ -44,7 +54,7 @@ def parse_url(url: str) -> str:
     if len(parts) == 4 and (
         parts[2] != "results" or parts[3] != "eventhistory"
     ):
-        raise ValueError("Invalid domain")
+        raise ValueError("Invalid URL")
     return LATEST_RESULTS_URL_FORMAT.format(domain=domain, name=name)
 
 
@@ -59,6 +69,9 @@ class AutomaticScraper(tk.Frame):
         self._url = tk.StringVar()
         self._url.trace_add("write", lambda *_: self.validate_url())
         self.previous_url = ""
+        self.cancelled = False
+        self.exception = None
+
         self.info_label = tk.Label(
             self, text=(
                 "Provide the URL to the Parkrun event you wish to "
@@ -87,8 +100,65 @@ class AutomaticScraper(tk.Frame):
                 self.master.tab(tab, state="disabled")
         self.url_entry.config(state="disabled")
         self.feedback_label.config(text="Processing...")
-        self.start_button.config(text="Cancel")
-        print(parse_url(self.url))
+        self.start_button.config(text="Cancel", command=self.cancel)
+        
+        threading.Thread(target=self.process, daemon=True).start()
+    
+    def process(self) -> None:
+        """
+        Proceeds to scrape the data using selenium in a
+        thread to maintain UI responsiveness.
+        """
+        try:
+            options = ChromeOptions()
+            options.add_argument("--headless=new")
+            # Spoof user agent to avoid instant bot detection.
+            options.add_argument(f"user-agent={USER_AGENT}")
+            # Just to be safe, disguise bot further.
+            options.add_experimental_option("useAutomationExtension", False)
+            options.add_experimental_option("excludeSwitches",["enable-automation"])
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            url = parse_url(self.url)
+            with Chrome(options=options) as driver:
+                if self.cancelled:
+                    raise Exception
+                driver.get(url)
+                if self.cancelled:
+                    raise Exception
+                Wait(driver, TIMEOUT).until(
+                    EC.presence_of_element_located((By.ID, "primary")))
+                if self.cancelled:
+                    raise Exception
+                source = driver.page_source
+        except WebDriverException:
+            self.exception = RuntimeError(
+                "Summary table failed to load - "
+                "check your Internet connection.\n"
+                "Otherwise, perhaps the bot has been detected.")
+        except Exception as e:
+            self.exception = e
+        self.stop()
+        self.master.master.process_html(source)
+
+    def cancel(self) -> None:
+        """Cancels the data collection."""
+        self.feedback_label.config(text="Cancelling...")
+        self.cancelled = True
+    
+    def stop(self) -> None:
+        """Data collection cancelled/finished, or error occurred."""
+        if not self.cancelled:
+            if self.exception is not None:
+                messagebox.showerror(
+                    "Error",
+                    f"Unfortunately, an error has occurred: {self.exception}")
+        self.cancelled = False
+        self.exception = None
+        for tab in self.master.tabs():
+            self.master.tab(tab, state="normal")
+        self.url_entry.config(state="normal")
+        self.validate_url()
+        self.start_button.config(text="Start", command=self.start)
 
     def validate_url(self) -> None:
         """
