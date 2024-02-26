@@ -9,6 +9,7 @@ from tkinter import ttk
 
 import auto
 import manual
+import output
 
 
 windll.shcore.SetProcessDpiAwareness(1) # Enhanced GUI quality.
@@ -25,7 +26,7 @@ class ParkrunScraper(tk.Tk):
         self.notebook = ttk.Notebook(self)
         self.automatic_scraper = auto.AutomaticScraper(self.notebook)
         self.manual_scraper = manual.ManualScraper(self.notebook)
-        self.output_screen = OutputScreen(self.notebook)
+        self.output_screen = output.OutputScreen(self.notebook)
         self.automatic_scraper.pack(padx=10, pady=10)
         self.manual_scraper.pack(padx=10, pady=10)
         self.output_screen.pack(padx=10, pady=10)
@@ -41,22 +42,17 @@ class ParkrunScraper(tk.Tk):
         and outputs the data onto the output screen.
         """
         try:
-            pass
+            try:
+                self.output_screen.process(source)
+            except ZeroDivisionError:
+                # Implies no data.
+                raise RuntimeError(
+                    "No historical data found for given Parkrun.")
         except Exception as e:
             messagebox.showerror(
                 "Error",
                     "Unfortunately an error occurred "
                     f"while attempting to parse the HTML data: {e}")
-
-
-class OutputScreen(tk.Frame):
-    """Data output screen, including exportation facilities."""
-
-    def __init__(self, master: ttk.Notebook) -> None:
-        super().__init__(master)
-        self.no_data_label = tk.Label(
-            self, text="No data yet!\nInput a URL or file to get started.")
-        self.no_data_label.pack(padx=25, pady=25)
 
 
 def main() -> None:
