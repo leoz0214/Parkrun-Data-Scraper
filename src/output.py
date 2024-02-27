@@ -32,8 +32,8 @@ class EventData:
     date: dt.date
     finishers: int
     volunteers: int
-    first_male: FirstPlace
-    first_female: FirstPlace
+    first_male: FirstPlace | None
+    first_female: FirstPlace | None
 
 
 @dataclass
@@ -44,14 +44,38 @@ class Data:
     median_finishers: int
     mean_volunteers: float
     median_volunteers: int
+    male_record: FirstPlace
+    female_record: FirstPlace
+    mean_first_male_seconds: int
+    mean_first_female_seconds: int
+    top_male_winners: list[TopWinner]
+    top_female_winners: list[TopWinner]
+    cancellation_rate: float
+    event_count: int
+    finishes: int
+    finishers: int
+    mean_finishes: float
+    volunteers: int
+    personal_bests: int
+    mean_finish_seconds: int
+    groups: int
+    email: str
+    events: list[EventData]
 
 
 MOST_FREQUENT_WINNERS_COUNT = 3
+ISO_SATURDAY = 6
 
 
 def mmss_to_seconds(time_: str) -> int:
     """Converts finish time MMSS to seconds."""
     return int(time_[:2]) * 60 + int(time_[2:])
+
+
+def hh_mm_ss_to_seconds(time_: str) -> int:
+    """Converts HH:MM:SS into seconds."""
+    hours, minutes, seconds = map(int, time_.split(":"))
+    return hours * 3600 + minutes * 60 + seconds
 
 
 def get_averages(counts: list[int]) -> tuple[float, int]:
@@ -63,7 +87,7 @@ def get_averages(counts: list[int]) -> tuple[float, int]:
 
 def get_first_finishers_data(
     first_finishers: list[FirstPlace]
-) -> tuple[FirstPlace, float, list[TopWinner]]:
+) -> tuple[FirstPlace, int, list[TopWinner]]:
     """
     Returns data on first finishers of a particular gender,
     including course record, mean first time, top N most frequent winners.
@@ -77,7 +101,28 @@ def get_first_finishers_data(
     top_winners = [
         TopWinner(*athlete, wins=count)
         for athlete, count in top_first_finishers]
-    return fastest, mean_seconds, top_winners
+    return fastest, round(mean_seconds), top_winners
+
+
+def get_cancellation_rate(dates: list[dt.date]) -> float:
+    """
+    Returns the cancellation rate (based on number of missing weeks between
+    the first and last dates). IGNORES CHRISTMAS/NEW YEAR SPECIAL RUNS,
+    only consider Saturday runs.
+    """
+    saturday_events = [
+        date for date in dates if date.isoweekday() == ISO_SATURDAY]
+    time_between = max(saturday_events) - min(saturday_events)
+    expected_events = time_between.days // 7 + 1
+    actual_events = len(saturday_events)
+    return 1 - actual_events / expected_events
+
+
+def get_stat_value(soup: BeautifulSoup, label: str) -> str:
+    """Returns statistic value on website given label text."""
+    for stat in soup.find_all(class_="aStat"):
+        if label in stat.text:
+            return stat.find("span").text
 
 
 def parse_source(source: str) -> Data:
@@ -86,7 +131,6 @@ def parse_source(source: str) -> Data:
     No parkrun has many events, performance not crucial.
     """
     soup = BeautifulSoup(source, "html.parser")
-    title = soup.find("h1").text.removesuffix(" parkrun Event History")
     table = soup.find("table", class_="Results-table").find("tbody")
     events_data = []
     for row in table.find_all("tr"):
@@ -95,19 +139,28 @@ def parse_source(source: str) -> Data:
         date = dt.date(*reversed(tuple(map(int, row["data-date"].split("/")))))
         finishers = int(row["data-finishers"])
         volunteers = int(row["data-volunteers"])
-        first_male_name = row["data-male"]
-        first_female_name = row["data-female"]
-        first_male_time = mmss_to_seconds(row["data-maletime"])
-        first_female_time = mmss_to_seconds(row["data-femaletime"])
+
         first_male_url, first_female_url, *_ = (
             a["href"] for a in row.find_all(
                 "a", href=lambda href: href and "athlete" in href))
-        first_male_id = int(first_male_url.split("=")[1])
-        first_female_id = int(first_female_url.split("=")[1])
+        first_male_name = row["data-male"]
+        if first_male_name:
+            first_male_time = mmss_to_seconds(row["data-maletime"])
+            first_male_id = int(first_male_url.split("=")[1])
+            first_male = FirstPlace(
+                first_male_id, first_male_name, first_male_time)
+        else:
+            first_male = None
+        first_female_name = row["data-female"]
+        if first_female_name:
+            first_female_time = mmss_to_seconds(row["data-femaletime"])
+            first_female_id = int(first_female_url.split("=")[1])
+            first_female = FirstPlace(
+                first_female_id, first_female_name, first_female_time)
+        else:
+            first_female = None
         record = EventData(
-            number, date, finishers, volunteers,
-            FirstPlace(first_male_id, first_male_name, first_male_time),
-            FirstPlace(first_female_id, first_female_name, first_female_time))
+            number, date, finishers, volunteers, first_male, first_female)
         events_data.append(record)
 
     finisher_counts = [event.finishers for event in events_data]
@@ -115,12 +168,39 @@ def parse_source(source: str) -> Data:
     volunteer_counts = [event.volunteers for event in events_data]
     mean_volunteers, median_volunteers = get_averages(volunteer_counts)
 
-    first_male_finishers = [event.first_male for event in events_data]
-    male_record, mean_male_seconds, top_male_winners = (
+    first_male_finishers = [
+        event.first_male for event in events_data
+        if event.first_male is not None]
+    male_record, mean_first_male_seconds, top_male_winners = (
         get_first_finishers_data(first_male_finishers))
-    first_female_finishers = [event.first_female for event in events_data]
-    female_record, femean_male_seconds, top_female_winners = (
+    first_female_finishers = [
+        event.first_female for event in events_data
+        if event.first_female is not None]
+    female_record, mean_first_female_seconds, top_female_winners = (
         get_first_finishers_data(first_female_finishers))
+    
+    dates = [event.date for event in events_data]
+    cancellation_rate = get_cancellation_rate(dates)
+
+    event_count = len(events_data)
+    title = soup.find("h1").text.removesuffix(" parkrun Event History")
+    finishes = int(get_stat_value(soup, "Finishes:").replace(",", ""))
+    finishers = int(get_stat_value(soup, "Finishers:").replace(",", ""))
+    mean_finishes = finishes / finishers
+    volunteers = int(get_stat_value(soup, "Volunteers:").replace(",", ""))
+    personal_bests = int(get_stat_value(soup, "PBs:").replace(",", ""))
+    mean_finish_seconds = hh_mm_ss_to_seconds(
+        get_stat_value(soup, "Average finish time:"))
+    groups = int(get_stat_value(soup, "Groups:").replace(",", ""))
+    email = soup.find("a", href=lambda href: href and "mailto" in href).text
+    # Bundles all data obtained in this function into a data class.
+    return Data(
+        title, mean_finishers, median_finishers, mean_volunteers,
+        median_volunteers, male_record, female_record, mean_first_male_seconds,
+        mean_first_female_seconds, top_male_winners, top_female_winners,
+        cancellation_rate, event_count, finishes, finishers, mean_finishes,
+        volunteers, personal_bests, mean_finish_seconds, groups, email,
+        events_data)
 
 
 class OutputScreen(tk.Frame):
@@ -138,3 +218,4 @@ class OutputScreen(tk.Frame):
         and displaying it appropriately.
         """
         data = parse_source(source)
+        print(data)

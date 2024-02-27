@@ -137,8 +137,10 @@ class AutomaticScraper(tk.Frame):
                 "Otherwise, perhaps the bot has been detected.")
         except Exception as e:
             self.exception = e
+        cancelled = self.cancelled
         self.stop()
-        self.master.master.process_html(source)
+        if not cancelled:
+            self.master.master.process_html(source)
 
     def cancel(self) -> None:
         """Cancels the data collection."""

@@ -42,7 +42,11 @@ class ManualScraper(tk.Frame):
                 title="Select HTML file"
             ) as f:
                 source = f.read()
-            self.master.master.process_html(source)
+        except AttributeError:
+            # Cancelled
+            return
         except Exception as e:
             messagebox.showerror(
                 "Error", f"Unfortunately, an error occurred: {e}")
+        else:
+            self.master.master.process_html(source)
