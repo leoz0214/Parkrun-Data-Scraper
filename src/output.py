@@ -6,6 +6,7 @@ from collections import Counter
 from dataclasses import dataclass
 from tkinter import ttk
 
+import lxml
 from bs4 import BeautifulSoup
 
 
@@ -78,6 +79,12 @@ def hh_mm_ss_to_seconds(time_: str) -> int:
     return hours * 3600 + minutes * 60 + seconds
 
 
+def seconds_to_mmss(seconds: int) -> str:
+    """Converts seconds to MM:SS format."""
+    minutes, seconds = divmod(seconds, 60)
+    return f"{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"
+
+
 def get_averages(counts: list[int]) -> tuple[float, int]:
     """Returns mean and median of counts (median rounded to integer)."""
     mean = statistics.mean(counts)
@@ -130,7 +137,11 @@ def parse_source(source: str) -> Data:
     Returns historical data from HTML past results page.
     No parkrun has many events, performance not crucial.
     """
-    soup = BeautifulSoup(source, "html.parser")
+    try:
+        soup = BeautifulSoup(source, "lxml")
+    except Exception:
+        # Fall back to slower html.parser if LXML unavailable.
+        soup = BeautifulSoup(source, "html.parser")
     table = soup.find("table", class_="Results-table").find("tbody")
     events_data = []
     for row in table.find_all("tr"):
@@ -210,6 +221,17 @@ class OutputScreen(tk.Frame):
         super().__init__(master)
         self.no_data_label = tk.Label(
             self, text="No data yet!\nInput a URL or file to get started.")
+        self.title_label = tk.Label(self, anchor="center")
+        self.mean_finishers_label = tk.Label(self, width=25)
+        self.median_finishers_label = tk.Label(self, width=25)
+        self.mean_volunteers_label = tk.Label(self, width=25)
+        self.median_volunteers_label = tk.Label(self, width=25)
+        self.male_record_label = tk.Label(self, width=50)
+        self.female_record_label = tk.Label(self, width=50)
+        self.male_mean_first_time_label = tk.Label(self, width=25)
+        self.female_mean_first_time_label = tk.Label(self, width=25)
+        self.male_top_winners_frame = TopWinnersFrame(self, "male")
+        self.female_top_winners_frame = TopWinnersFrame(self, "female")
         self.no_data_label.pack(padx=25, pady=25)
     
     def process(self, source: str) -> None:
@@ -218,4 +240,72 @@ class OutputScreen(tk.Frame):
         and displaying it appropriately.
         """
         data = parse_source(source)
-        print(data)
+        for widget in self.children.values():
+            widget.pack_forget()
+            widget.grid_forget()
+        self.title_label.config(text=f"{data.title} Parkrun - Statistics")
+        self.mean_finishers_label.config(
+            text=f"Mean finishers: {data.mean_finishers:.1f}")
+        self.median_finishers_label.config(
+            text=f"Median finishers: {data.median_finishers}")
+        self.mean_volunteers_label.config(
+            text=f"Mean volunteers: {data.mean_volunteers:.1f}")
+        self.median_volunteers_label.config(
+            text=f"Median volunteers: {data.median_volunteers}")
+        self.male_record_label.config(
+            text=(
+                f"Male course record: {data.male_record.name} | "
+                f"A{data.male_record.athlete_id} | "
+                f"{seconds_to_mmss(data.male_record.seconds)}"))
+        self.female_record_label.config(
+            text=(
+                f"Female course record: {data.female_record.name} | "
+                f"A{data.female_record.athlete_id} | "
+                f"{seconds_to_mmss(data.female_record.seconds)}"))
+        self.male_mean_first_time_label.config(
+            text=(
+                "Mean male 1st time: "
+                f"{seconds_to_mmss(data.mean_first_male_seconds)}"))
+        self.female_mean_first_time_label.config(
+            text=(
+                "Mean female 1st time: "
+                f"{seconds_to_mmss(data.mean_first_female_seconds)}"))
+        self.male_top_winners_frame.set(data.top_male_winners)
+        self.female_top_winners_frame.set(data.top_female_winners)
+
+        self.title_label.grid(row=0, column=0, columnspan=2, padx=5, pady=3)
+        self.mean_finishers_label.grid(row=1, column=0, padx=5, pady=3)
+        self.median_finishers_label.grid(row=1, column=1, padx=5, pady=3)
+        self.mean_volunteers_label.grid(row=2, column=0, padx=5, pady=3)
+        self.median_volunteers_label.grid(row=2, column=1, padx=5, pady=3)
+        self.male_record_label.grid(
+            row=3, column=0, columnspan=2, padx=5, pady=3)
+        self.female_record_label.grid(
+            row=4, column=0, columnspan=2, padx=5, pady=3)
+        self.male_mean_first_time_label.grid(row=5, column=0, padx=5, pady=3)
+        self.female_mean_first_time_label.grid(row=5, column=1, padx=5, pady=3)
+        self.male_top_winners_frame.grid(row=6, column=0, padx=5, pady=(15, 3))
+        self.female_top_winners_frame.grid(
+            row=6, column=1, padx=5, pady=(15, 3))
+
+
+class TopWinnersFrame(tk.Frame):
+    """
+    Frame for displaying information on the
+    most frequent winners of a particular Parkrun.
+    """
+
+    def __init__(self, master: OutputScreen, gender: str) -> None:
+        super().__init__(master)
+        self.label = tk.Label(self, text=f"Most frequent {gender} winners:")
+        self.info_label = tk.Label(self)
+        self.label.pack()
+        self.info_label.pack()
+    
+    def set(self, top_winners: list[TopWinner]) -> None:
+        """Updates the info label given the top winners."""
+        text = "\n".join(
+            f"{n}. {winner.name} | A{winner.athlete_id} | x{winner.wins}"
+            for n, winner in enumerate(top_winners, 1))
+        self.info_label.config(text=text)
+    

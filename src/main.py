@@ -22,6 +22,7 @@ class ParkrunScraper(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title(TITLE)
+        self.resizable(False, False)
     
         self.notebook = ttk.Notebook(self)
         self.automatic_scraper = auto.AutomaticScraper(self.notebook)
@@ -44,6 +45,7 @@ class ParkrunScraper(tk.Tk):
         try:
             try:
                 self.output_screen.process(source)
+                self.notebook.select(self.output_screen)
             except ZeroDivisionError:
                 # Implies no data.
                 raise RuntimeError(
