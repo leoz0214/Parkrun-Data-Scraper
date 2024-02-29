@@ -6,8 +6,13 @@ from collections import Counter
 from dataclasses import dataclass
 from tkinter import ttk
 
-import lxml
+try:
+    import lxml
+except ImportError:
+    pass
 from bs4 import BeautifulSoup
+from matplotlib import dates as mdates
+from matplotlib import pyplot as plt
 
 
 @dataclass
@@ -55,10 +60,9 @@ class Data:
     event_count: int
     finishes: int
     finishers: int
-    mean_finishes: float
     volunteers: int
     personal_bests: int
-    mean_finish_seconds: int
+    mean_seconds: int
     groups: int
     email: str
     events: list[EventData]
@@ -194,10 +198,11 @@ def parse_source(source: str) -> Data:
     cancellation_rate = get_cancellation_rate(dates)
 
     event_count = len(events_data)
-    title = soup.find("h1").text.removesuffix(" parkrun Event History")
+    title = soup.find(
+        "h1"
+    ).text.removesuffix("Event History").replace(" parkrun", "").strip()
     finishes = int(get_stat_value(soup, "Finishes:").replace(",", ""))
     finishers = int(get_stat_value(soup, "Finishers:").replace(",", ""))
-    mean_finishes = finishes / finishers
     volunteers = int(get_stat_value(soup, "Volunteers:").replace(",", ""))
     personal_bests = int(get_stat_value(soup, "PBs:").replace(",", ""))
     mean_finish_seconds = hh_mm_ss_to_seconds(
@@ -209,7 +214,7 @@ def parse_source(source: str) -> Data:
         title, mean_finishers, median_finishers, mean_volunteers,
         median_volunteers, male_record, female_record, mean_first_male_seconds,
         mean_first_female_seconds, top_male_winners, top_female_winners,
-        cancellation_rate, event_count, finishes, finishers, mean_finishes,
+        cancellation_rate, event_count, finishes, finishers,
         volunteers, personal_bests, mean_finish_seconds, groups, email,
         events_data)
 
@@ -219,8 +224,11 @@ class OutputScreen(tk.Frame):
 
     def __init__(self, master: ttk.Notebook) -> None:
         super().__init__(master)
+        self.data = None
         self.no_data_label = tk.Label(
             self, text="No data yet!\nInput a URL or file to get started.")
+        self.no_data_label.pack(padx=25, pady=25)
+
         self.title_label = tk.Label(self, anchor="center")
         self.mean_finishers_label = tk.Label(self, width=25)
         self.median_finishers_label = tk.Label(self, width=25)
@@ -232,7 +240,24 @@ class OutputScreen(tk.Frame):
         self.female_mean_first_time_label = tk.Label(self, width=25)
         self.male_top_winners_frame = TopWinnersFrame(self, "male")
         self.female_top_winners_frame = TopWinnersFrame(self, "female")
-        self.no_data_label.pack(padx=25, pady=25)
+
+        self.event_count_label = tk.Label(self, width=25)
+        self.cancellation_rate_label = tk.Label(self, width=25)
+        self.finishes_label = tk.Label(self, width=25)
+        self.finishers_label = tk.Label(self, width=25)
+        self.volunteers_label = tk.Label(self, width=25)
+        self.personal_bests_label = tk.Label(self, width=25)
+        self.mean_time_label = tk.Label(self, width=25)
+        self.groups_label = tk.Label(self, width=25)
+        self.email_label = tk.Label(self, width=50)
+
+        self.finishers_graph_button = ttk.Button(
+            self, text="Finishers Graph", command=self.display_graph)
+        self.volunteers_graph_button = ttk.Button(
+            self, text="Volunteers Graph")
+        self.male_first_graph_button = ttk.Button(self, text="Male 1st Graph")
+        self.female_first_graph_button = ttk.Button(
+            self, text="Female 1st Graph")
     
     def process(self, source: str) -> None:
         """
@@ -273,9 +298,22 @@ class OutputScreen(tk.Frame):
         self.male_top_winners_frame.set(data.top_male_winners)
         self.female_top_winners_frame.set(data.top_female_winners)
 
+        self.event_count_label.config(text=f"Event count: {data.event_count}")
+        self.cancellation_rate_label.config(
+            text=f"Cancellation rate: {data.cancellation_rate * 100:.1f}%")
+        self.finishes_label.config(text=f"Finishes: {data.finishes}")
+        self.finishers_label.config(text=f"Finishers: {data.finishers}")
+        self.volunteers_label.config(text=f"Volunteers: {data.volunteers}")
+        self.personal_bests_label.config(
+            text=f"Personal bests: {data.personal_bests}")
+        self.mean_time_label.config(
+            text=f"Mean finish time: {seconds_to_mmss(data.mean_seconds)}")
+        self.groups_label.config(text=f"Groups: {data.groups}")
+        self.email_label.config(text=f"Email: {data.email}")
+
         self.title_label.grid(row=0, column=0, columnspan=2, padx=5, pady=3)
-        self.mean_finishers_label.grid(row=1, column=0, padx=5, pady=3)
-        self.median_finishers_label.grid(row=1, column=1, padx=5, pady=3)
+        self.mean_finishers_label.grid(row=1, column=0, padx=5, pady=(25, 3))
+        self.median_finishers_label.grid(row=1, column=1, padx=5, pady=(25, 3))
         self.mean_volunteers_label.grid(row=2, column=0, padx=5, pady=3)
         self.median_volunteers_label.grid(row=2, column=1, padx=5, pady=3)
         self.male_record_label.grid(
@@ -284,10 +322,40 @@ class OutputScreen(tk.Frame):
             row=4, column=0, columnspan=2, padx=5, pady=3)
         self.male_mean_first_time_label.grid(row=5, column=0, padx=5, pady=3)
         self.female_mean_first_time_label.grid(row=5, column=1, padx=5, pady=3)
-        self.male_top_winners_frame.grid(row=6, column=0, padx=5, pady=(15, 3))
+        self.male_top_winners_frame.grid(row=6, column=0, padx=5, pady=(25, 3))
         self.female_top_winners_frame.grid(
-            row=6, column=1, padx=5, pady=(15, 3))
+            row=6, column=1, padx=5, pady=(25, 3))
+        
+        self.event_count_label.grid(row=7, column=0, padx=5, pady=(25, 3))
+        self.cancellation_rate_label.grid(
+            row=7, column=1, padx=5, pady=(25, 3))
+        self.finishes_label.grid(row=9, column=0, padx=5, pady=3)
+        self.finishers_label.grid(row=9, column=1, padx=5, pady=5)
+        self.volunteers_label.grid(row=10, column=0, padx=5, pady=3)
+        self.personal_bests_label.grid(row=10, column=1, padx=5, pady=3)
+        self.mean_time_label.grid(row=11, column=0, padx=5, pady=3)
+        self.groups_label.grid(row=11, column=1, padx=5, pady=3)
+        self.email_label.grid(row=12, column=0, columnspan=2, padx=5, pady=3)
 
+        self.finishers_graph_button.grid(
+            row=13, column=0, padx=5, pady=(25, 3))
+        self.volunteers_graph_button.grid(
+            row=13, column=1, padx=5, pady=(25, 3))
+        self.male_first_graph_button.grid(row=14, column=0, padx=5, pady=3)
+        self.female_first_graph_button.grid(row=14, column=1, padx=5, pady=3)
+        
+        self.data = data
+
+    def display_graph(self) -> None:
+        """Displays graph for particular metric against date."""
+        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+        plt.gca().xaxis.set_major_locator(mdates.DayLocator(interval=self.data.event_count // 2))
+        plt.title(f"{self.data.title} Parkrun - Finishers against Time")
+        dates = [event.date for event in self.data.events]
+        y_values = [event.finishers for event in self.data.events]
+        plt.plot(dates, y_values)
+        plt.gcf().autofmt_xdate()
+        plt.show()
 
 class TopWinnersFrame(tk.Frame):
     """
