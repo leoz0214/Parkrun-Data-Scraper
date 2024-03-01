@@ -3,6 +3,7 @@ import datetime as dt
 import statistics
 import tkinter as tk
 from collections import Counter
+from contextlib import suppress
 from dataclasses import dataclass
 from tkinter import ttk
 
@@ -10,9 +11,11 @@ try:
     import lxml
 except ImportError:
     pass
+import matplotlib
 from bs4 import BeautifulSoup
 from matplotlib import dates as mdates
 from matplotlib import pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 
 @dataclass
@@ -70,6 +73,8 @@ class Data:
 
 MOST_FREQUENT_WINNERS_COUNT = 3
 ISO_SATURDAY = 6
+SECONDS_TICKS_MIN_DIFFERENCE = 30
+MAX_SECONDS_TICKS = 10
 
 
 def mmss_to_seconds(time_: str) -> int:
@@ -252,12 +257,24 @@ class OutputScreen(tk.Frame):
         self.email_label = tk.Label(self, width=50)
 
         self.finishers_graph_button = ttk.Button(
-            self, text="Finishers Graph", command=self.display_graph)
+            self, text="Finishers Graph",
+            command=lambda: self.display_graph("Finishers", "finishers"))
         self.volunteers_graph_button = ttk.Button(
-            self, text="Volunteers Graph")
-        self.male_first_graph_button = ttk.Button(self, text="Male 1st Graph")
+            self, text="Volunteers Graph",
+            command=lambda: self.display_graph("Volunteers", "volunteers"))
+        self.male_first_graph_button = ttk.Button(
+            self, text="Male 1st Graph",
+            command=lambda: self.display_graph(
+                "Male 1st Time", "first_male.seconds"))
         self.female_first_graph_button = ttk.Button(
-            self, text="Female 1st Graph")
+            self, text="Female 1st Graph",
+            command=lambda: self.display_graph(
+                "Female 1st Time", "first_female.seconds"))
+        
+        self.save_csv_button = ttk.Button(self, text="Save CSV")
+        self.save_xlsx_button = ttk.Button(self, text="Save XLSX")
+        self.save_docx_button = ttk.Button(self, text="Save DOCX")
+        self.save_pdf_button = ttk.Button(self, text="Save PDF")
     
     def process(self, source: str) -> None:
         """
@@ -343,19 +360,53 @@ class OutputScreen(tk.Frame):
             row=13, column=1, padx=5, pady=(25, 3))
         self.male_first_graph_button.grid(row=14, column=0, padx=5, pady=3)
         self.female_first_graph_button.grid(row=14, column=1, padx=5, pady=3)
+
+        self.save_csv_button.grid(row=15, column=0, padx=5, pady=(25, 3))
+        self.save_xlsx_button.grid(row=15, column=1, padx=5, pady=(25, 3))
+        self.save_docx_button.grid(row=16, column=0, padx=5, pady=3)
+        self.save_pdf_button.grid(row=16, column=1, padx=5, pady=3)
         
         self.data = data
 
-    def display_graph(self) -> None:
+    def display_graph(self, label: str, attribute: str) -> None:
         """Displays graph for particular metric against date."""
+        plt.close()
         plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
-        plt.gca().xaxis.set_major_locator(mdates.DayLocator(interval=self.data.event_count // 2))
-        plt.title(f"{self.data.title} Parkrun - Finishers against Time")
-        dates = [event.date for event in self.data.events]
-        y_values = [event.finishers for event in self.data.events]
+        plt.gca().xaxis.set_major_locator(
+            mdates.DayLocator(interval=self.data.event_count // 2))
+        # Ensure y-axis always integral.
+        plt.gca().yaxis.set_major_locator(MaxNLocator(integer=True))
+        plt.title(f"{self.data.title} Parkrun - {label} against Date")
+        plt.xlabel("Date")
+        plt.ylabel(label)
+        dates = []
+        y_values = []
+        for event in self.data.events:
+            with suppress(AttributeError):
+                y_values.append(eval(f"event.{attribute}"))
+                dates.append(event.date)
         plt.plot(dates, y_values)
+        if "seconds" in attribute:
+            # Display time labels on y-axis: MM:SS format.
+            min_seconds_tick = round(
+                min(y_values) / SECONDS_TICKS_MIN_DIFFERENCE
+            ) * SECONDS_TICKS_MIN_DIFFERENCE
+            max_seconds_tick = round(
+                max(y_values) / SECONDS_TICKS_MIN_DIFFERENCE
+            ) * SECONDS_TICKS_MIN_DIFFERENCE
+            seconds_ticks = [
+                seconds for seconds in range(
+                    min_seconds_tick, max_seconds_tick + 1,
+                    SECONDS_TICKS_MIN_DIFFERENCE)]
+            # Limits the number of seconds ticks to avoid clumping.
+            seconds_ticks = seconds_ticks[
+                ::len(seconds_ticks) // MAX_SECONDS_TICKS + 1]
+            time_strings = [
+                seconds_to_mmss(seconds) for seconds in seconds_ticks]
+            plt.yticks(seconds_ticks, time_strings)
         plt.gcf().autofmt_xdate()
-        plt.show()
+        plt.show(block=False)
+
 
 class TopWinnersFrame(tk.Frame):
     """
