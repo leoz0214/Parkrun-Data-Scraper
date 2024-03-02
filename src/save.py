@@ -7,6 +7,7 @@ import io
 
 import docx
 import docx.document
+import docx.table
 import openpyxl
 from docx.shared import Inches, Pt
 from matplotlib import pyplot as plt
@@ -25,9 +26,14 @@ TABLE_COLUMNS = (
 MAX_SHEET_NAME_LENGTH = 31
 GRAPH_WIDTH = Inches(5)
 GRAPH_HEIGHT = Inches(3)
-TITLE_SIZE = Pt(32)
+TITLE_SIZE = Pt(28)
 HEADING_1_SIZE = Pt(24)
 TEXT_SIZE = Pt(16)
+TOP_WINNERS_COLUMNS_AND_WIDTHS = {
+    "#": Inches(0.25), "Name": Inches(2.25),
+    "Athlete ID": Inches(0.9), "Wins": Inches(0.4)
+}
+TABLE_SIZE = Pt(11)
 
 
 def get_event_records(events: list["output.EventData"]) -> list[list]:
@@ -82,13 +88,53 @@ def add_graph(
     plt.close()
 
 
+def set_table_font_size(table: docx.table.Table, size: Pt) -> None:
+    """Sets the font size of the entire table."""
+    for row in table.rows:
+        for cell in row.cells:
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.font.size = size
+
+
+def set_table_column_widths(table: docx.table.Table, widths) -> None:
+    """Sets the column widths of table."""
+    for column, width in zip(table.columns, widths):
+        for cell in column.cells:
+            cell.width = width
+
+
+def add_top_winners_table(
+    document: docx.document.Document, top_winners: list["output.TopWinner"]
+) -> None:
+    """Creates top male/female winners table."""
+    table = document.add_table(
+        rows=len(top_winners) + 1,
+        cols=len(TOP_WINNERS_COLUMNS_AND_WIDTHS))
+    table.style = "Table Grid"
+    table.autofit = True
+    for i, column in enumerate(TOP_WINNERS_COLUMNS_AND_WIDTHS):
+        cell = table.cell(0, i)
+        cell.text = str(column)
+        # Make cell (column) text bold.
+        for paragraph in cell.paragraphs:
+            for run in paragraph.runs:
+                run.font.bold = True
+    for i, row in enumerate(top_winners, 1):
+        record = (i, row.name, row.athlete_id, row.wins)
+        for j, value in enumerate(record):
+            table.cell(i, j).text = str(value)
+    set_table_font_size(table, TABLE_SIZE)
+    set_table_column_widths(table, TOP_WINNERS_COLUMNS_AND_WIDTHS.values())
+
+
 def generate_docx(data: "output.Data") -> docx.document.Document:
     """Generates and returns a DOCX report ready to be saved."""
     document: docx.document.Document = docx.Document()
     document.styles["Title"].font.size = TITLE_SIZE
     document.styles["Heading 1"].font.size = HEADING_1_SIZE
     document.styles["Normal"].font.size = TEXT_SIZE
-    document.add_heading(f"{data.title} Parkrun - Statistics", 0)
+    document.add_heading(f"{data.title} Parkrun Stats", 0)
     document.add_heading("Event Popularity", 1)
     popularity_points = (
         f"Mean finishers: {data.mean_finishers:.1f}",
@@ -115,9 +161,25 @@ def generate_docx(data: "output.Data") -> docx.document.Document:
     document.add_paragraph(
         f"The mean female 1st place time is: "
         f"{seconds_to_mmss(data.mean_first_female_seconds)}.")
-    
-    # TODO - table of most frequent winners (including up to 10)
-    # need to implement columns and add data.
+    add_graph(document, data, "Male 1st Time", "first_male.seconds")
+    add_graph(document, data, "Female 1st Time", "first_female.seconds")
+    document.add_paragraph("Top male winners:")
+    add_top_winners_table(document, data.top_male_winners)
+    document.add_paragraph()
+    document.add_paragraph("Top female winners:")
+    add_top_winners_table(document, data.top_female_winners)
+    document.add_paragraph()
+
+    document.add_heading("Summary", 1)
+    summary_points = (
+        f"Event count: {data.event_count}",
+        f"Finishes: {data.finishes}", f"Finishers: {data.finishers}",
+        f"Volunteers: {data.volunteers}", f"Groups: {data.groups}",
+        f"Personal bests: {data.personal_bests}",
+        f"Mean finish time: {seconds_to_mmss(data.mean_seconds)}",
+        f"Email: {data.email}")
+    for point in summary_points:
+        document.add_paragraph(point, style="List Bullet")
 
     return document
 

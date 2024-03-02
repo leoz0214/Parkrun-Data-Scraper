@@ -1,5 +1,6 @@
 """Module to process HTML data and output it on screen."""
 import datetime as dt
+import operator
 import statistics
 import tkinter as tk
 from collections import Counter
@@ -206,9 +207,8 @@ def parse_source(source: str) -> Data:
         title, mean_finishers, median_finishers, mean_volunteers,
         median_volunteers, male_record, female_record, mean_first_male_seconds,
         mean_first_female_seconds, top_male_winners, top_female_winners,
-        cancellation_rate, event_count, finishes, finishers,
-        volunteers, personal_bests, mean_finish_seconds, groups, email,
-        events_data)
+        cancellation_rate, event_count, finishes, finishers, volunteers,
+        personal_bests, mean_finish_seconds, groups, email, events_data)
 
 
 def plot_graph(data: Data, label: str, attribute: str) -> None:
@@ -225,7 +225,7 @@ def plot_graph(data: Data, label: str, attribute: str) -> None:
     y_values = []
     for event in data.events:
         with suppress(AttributeError):
-            y_values.append(eval(f"event.{attribute}"))
+            y_values.append(operator.attrgetter(attribute)(event))
             dates.append(event.date)
     plt.plot(dates, y_values)
     if "seconds" in attribute:
@@ -409,7 +409,7 @@ class OutputScreen(tk.Frame):
         """Requests user for a file save path to export to."""
         file_path = filedialog.asksaveasfilename(
             defaultextension=extension, filetypes=((name, extension),),
-            title="Save As")
+            title=f"Save As {name}")
         return file_path
     
     @staticmethod
