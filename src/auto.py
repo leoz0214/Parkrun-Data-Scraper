@@ -109,6 +109,7 @@ class AutomaticScraper(tk.Frame):
         Proceeds to scrape the data using selenium in a
         thread to maintain UI responsiveness.
         """
+        source = None
         try:
             options = ChromeOptions()
             options.add_argument("--headless=new")
@@ -137,9 +138,8 @@ class AutomaticScraper(tk.Frame):
                 "Otherwise, perhaps the bot has been detected.")
         except Exception as e:
             self.exception = e
-        cancelled = self.cancelled
         self.stop()
-        if not cancelled:
+        if source is not None:
             self.master.master.process_html(source)
 
     def cancel(self) -> None:

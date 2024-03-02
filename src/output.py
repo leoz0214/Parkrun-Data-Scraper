@@ -5,17 +5,19 @@ import tkinter as tk
 from collections import Counter
 from contextlib import suppress
 from dataclasses import dataclass
+from tkinter import filedialog
+from tkinter import messagebox
 from tkinter import ttk
+from typing import Callable
 
-try:
+with suppress(ImportError):
     import lxml
-except ImportError:
-    pass
-import matplotlib
 from bs4 import BeautifulSoup
 from matplotlib import dates as mdates
 from matplotlib import pyplot as plt
 from matplotlib.ticker import MaxNLocator
+
+import save
 
 
 @dataclass
@@ -271,10 +273,14 @@ class OutputScreen(tk.Frame):
             command=lambda: self.display_graph(
                 "Female 1st Time", "first_female.seconds"))
         
-        self.save_csv_button = ttk.Button(self, text="Save CSV")
-        self.save_xlsx_button = ttk.Button(self, text="Save XLSX")
-        self.save_docx_button = ttk.Button(self, text="Save DOCX")
-        self.save_pdf_button = ttk.Button(self, text="Save PDF")
+        self.save_csv_button = ttk.Button(
+            self, text="Save CSV", command=self.save_csv)
+        self.save_xlsx_button = ttk.Button(
+            self, text="Save XLSX", command=self.save_xlsx)
+        self.save_docx_button = ttk.Button(
+            self, text="Save DOCX", command=self.save_docx)
+        self.save_pdf_button = ttk.Button(
+            self, text="Save PDF", command=self.save_pdf)
     
     def process(self, source: str) -> None:
         """
@@ -406,6 +412,57 @@ class OutputScreen(tk.Frame):
             plt.yticks(seconds_ticks, time_strings)
         plt.gcf().autofmt_xdate()
         plt.show(block=False)
+
+    def get_save_path(self, name: str, extension: str) -> str | None:
+        """Requests user for a file save path to export to."""
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=extension, filetypes=((name, extension),),
+            title="Save As")
+        return file_path
+    
+    @staticmethod
+    def handle_save_error(method: Callable) -> Callable:
+        # Decorator to display errors upon saving failure.
+        def wrapper(self: "OutputScreen") -> None:
+            try:
+                method(self)
+            except Exception as e:
+                messagebox.showerror(
+                    "Save Error",
+                        f"Unfortunately, an error occurred while saving: {e}")
+        return wrapper
+
+    @handle_save_error
+    def save_csv(self) -> None:
+        """Exports a CSV file from the data."""
+        file_path = self.get_save_path("CSV", ".csv")
+        if not file_path:
+            return
+        save.save_csv(self.data.events, file_path)
+
+    @handle_save_error
+    def save_xlsx(self) -> None:
+        """Exports a XLSX file from the data."""
+        file_path = self.get_save_path("XLSX", ".xlsx")
+        if not file_path:
+            return
+        save.save_xlsx(self.data, file_path)
+
+    @handle_save_error
+    def save_docx(self) -> None:
+        """Exports a DOCX file from the data."""
+        file_path = self.get_save_path("DOCX", ".docx")
+        if not file_path:
+            return
+        save.save_docx(self.data, file_path)
+    
+    @handle_save_error
+    def save_pdf(self) -> None:
+        """Exports a PDF file from the data."""
+        file_path = self.get_save_path("PDF", ".pdf")
+        if not file_path:
+            return
+        save.save_pdf(self.data, file_path)
 
 
 class TopWinnersFrame(tk.Frame):
