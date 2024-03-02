@@ -18,6 +18,7 @@ from matplotlib import pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 import save
+from utils import mmss_to_seconds, hh_mm_ss_to_seconds, seconds_to_mmss
 
 
 @dataclass
@@ -73,27 +74,11 @@ class Data:
     events: list[EventData]
 
 
-MOST_FREQUENT_WINNERS_COUNT = 3
+MOST_FREQUENT_WINNERS_COUNT = 10
+MOST_FREQUENT_WINNERS_COUNT_DISPLAY = 3
 ISO_SATURDAY = 6
 SECONDS_TICKS_MIN_DIFFERENCE = 30
 MAX_SECONDS_TICKS = 10
-
-
-def mmss_to_seconds(time_: str) -> int:
-    """Converts finish time MMSS to seconds."""
-    return int(time_[:2]) * 60 + int(time_[2:])
-
-
-def hh_mm_ss_to_seconds(time_: str) -> int:
-    """Converts HH:MM:SS into seconds."""
-    hours, minutes, seconds = map(int, time_.split(":"))
-    return hours * 3600 + minutes * 60 + seconds
-
-
-def seconds_to_mmss(seconds: int) -> str:
-    """Converts seconds to MM:SS format."""
-    minutes, seconds = divmod(seconds, 60)
-    return f"{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"
 
 
 def get_averages(counts: list[int]) -> tuple[float, int]:
@@ -226,6 +211,44 @@ def parse_source(source: str) -> Data:
         events_data)
 
 
+def plot_graph(data: Data, label: str, attribute: str) -> None:
+    """Plots graph for given data metric."""
+    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+    plt.gca().xaxis.set_major_locator(
+        mdates.DayLocator(interval=data.event_count // 2))
+    # Ensure y-axis always integral.
+    plt.gca().yaxis.set_major_locator(MaxNLocator(integer=True))
+    plt.title(f"{data.title} Parkrun - {label} against Date")
+    plt.xlabel("Date")
+    plt.ylabel(label)
+    dates = []
+    y_values = []
+    for event in data.events:
+        with suppress(AttributeError):
+            y_values.append(eval(f"event.{attribute}"))
+            dates.append(event.date)
+    plt.plot(dates, y_values)
+    if "seconds" in attribute:
+        # Display time labels on y-axis: MM:SS format.
+        min_seconds_tick = round(
+            min(y_values) / SECONDS_TICKS_MIN_DIFFERENCE
+        ) * SECONDS_TICKS_MIN_DIFFERENCE
+        max_seconds_tick = round(
+            max(y_values) / SECONDS_TICKS_MIN_DIFFERENCE
+        ) * SECONDS_TICKS_MIN_DIFFERENCE
+        seconds_ticks = [
+            seconds for seconds in range(
+                min_seconds_tick, max_seconds_tick + 1,
+                SECONDS_TICKS_MIN_DIFFERENCE)]
+        # Limits the number of seconds ticks to avoid clumping.
+        seconds_ticks = seconds_ticks[
+            ::len(seconds_ticks) // MAX_SECONDS_TICKS + 1]
+        time_strings = [
+            seconds_to_mmss(seconds) for seconds in seconds_ticks]
+        plt.yticks(seconds_ticks, time_strings)
+    plt.gcf().autofmt_xdate()
+
+
 class OutputScreen(tk.Frame):
     """Data output screen, including exportation facilities."""
 
@@ -318,8 +341,10 @@ class OutputScreen(tk.Frame):
             text=(
                 "Mean female 1st time: "
                 f"{seconds_to_mmss(data.mean_first_female_seconds)}"))
-        self.male_top_winners_frame.set(data.top_male_winners)
-        self.female_top_winners_frame.set(data.top_female_winners)
+        self.male_top_winners_frame.set(
+            data.top_male_winners[:MOST_FREQUENT_WINNERS_COUNT_DISPLAY])
+        self.female_top_winners_frame.set(
+            data.top_female_winners[:MOST_FREQUENT_WINNERS_COUNT_DISPLAY])
 
         self.event_count_label.config(text=f"Event count: {data.event_count}")
         self.cancellation_rate_label.config(
@@ -377,40 +402,7 @@ class OutputScreen(tk.Frame):
     def display_graph(self, label: str, attribute: str) -> None:
         """Displays graph for particular metric against date."""
         plt.close()
-        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
-        plt.gca().xaxis.set_major_locator(
-            mdates.DayLocator(interval=self.data.event_count // 2))
-        # Ensure y-axis always integral.
-        plt.gca().yaxis.set_major_locator(MaxNLocator(integer=True))
-        plt.title(f"{self.data.title} Parkrun - {label} against Date")
-        plt.xlabel("Date")
-        plt.ylabel(label)
-        dates = []
-        y_values = []
-        for event in self.data.events:
-            with suppress(AttributeError):
-                y_values.append(eval(f"event.{attribute}"))
-                dates.append(event.date)
-        plt.plot(dates, y_values)
-        if "seconds" in attribute:
-            # Display time labels on y-axis: MM:SS format.
-            min_seconds_tick = round(
-                min(y_values) / SECONDS_TICKS_MIN_DIFFERENCE
-            ) * SECONDS_TICKS_MIN_DIFFERENCE
-            max_seconds_tick = round(
-                max(y_values) / SECONDS_TICKS_MIN_DIFFERENCE
-            ) * SECONDS_TICKS_MIN_DIFFERENCE
-            seconds_ticks = [
-                seconds for seconds in range(
-                    min_seconds_tick, max_seconds_tick + 1,
-                    SECONDS_TICKS_MIN_DIFFERENCE)]
-            # Limits the number of seconds ticks to avoid clumping.
-            seconds_ticks = seconds_ticks[
-                ::len(seconds_ticks) // MAX_SECONDS_TICKS + 1]
-            time_strings = [
-                seconds_to_mmss(seconds) for seconds in seconds_ticks]
-            plt.yticks(seconds_ticks, time_strings)
-        plt.gcf().autofmt_xdate()
+        plot_graph(self.data, label, attribute)
         plt.show(block=False)
 
     def get_save_path(self, name: str, extension: str) -> str | None:
