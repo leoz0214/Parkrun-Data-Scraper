@@ -4,10 +4,20 @@ CSV, XLSX, DOCX and PDF.
 """
 import csv
 import io
+import pathlib
+import platform
+import tempfile
+from contextlib import suppress
 
+try:
+    import comtypes.client as comtypesclient
+except ImportError:
+    comtypesclient = None
 import docx
 import docx.document
 import docx.table
+with suppress(ImportError):
+    import docx2pdf
 import openpyxl
 from docx.shared import Inches, Pt
 from matplotlib import pyplot as plt
@@ -34,6 +44,7 @@ TOP_WINNERS_COLUMNS_AND_WIDTHS = {
     "Athlete ID": Inches(0.9), "Wins": Inches(0.4)
 }
 TABLE_SIZE = Pt(11)
+WORD_EXPORT_PDF_ID = 17
 
 
 def get_event_records(events: list["output.EventData"]) -> list[list]:
@@ -192,4 +203,29 @@ def save_docx(data: "output.Data", file_path: str) -> None:
 
 def save_pdf(data: "output.Data", file_path: str) -> None:
     """Saves a PDF report on event data."""
-    # TODO - same as docx except extra step docx->pdf.
+    document = generate_docx(data)
+    # Create temp file to use as dummy DOCX.
+    with tempfile.NamedTemporaryFile("wb", suffix=".docx", delete=False) as f:
+        temp_file_path = pathlib.Path(f.name)
+        document.save(f)
+    try:
+        if platform.system() == "Windows" and comtypesclient is not None:
+            # Use MS Word on windows to attempt conversion.
+            # Avoids weird behaviour of docx2pdf.
+            word = None
+            doc = None
+            try:
+                word = comtypesclient.CreateObject("Word.Application")
+                word.Visible = False
+                doc = word.Documents.Open(str(temp_file_path))
+                doc.SaveAs(file_path, FileFormat=WORD_EXPORT_PDF_ID)
+            finally:
+                if doc is not None:
+                    doc.Close()
+                if word is not None:
+                    word.Quit()
+        else:
+            # For MacOS, attempt conversion using docx2pdf.
+            docx2pdf.convert(temp_file_path, file_path, keep_active=True)
+    finally:
+        temp_file_path.unlink(missing_ok=True)

@@ -19,7 +19,7 @@ from matplotlib import pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 import save
-from utils import mmss_to_seconds, hh_mm_ss_to_seconds, seconds_to_mmss
+from utils import hh_mm_ss_to_seconds, seconds_to_mmss
 
 
 @dataclass
@@ -80,6 +80,14 @@ MOST_FREQUENT_WINNERS_COUNT_DISPLAY = 3
 ISO_SATURDAY = 6
 SECONDS_TICKS_MIN_DIFFERENCE = 30
 MAX_SECONDS_TICKS = 10
+
+
+def first_time_to_seconds(time_: str) -> int:
+    """Converts finish time MMSS to seconds."""
+    if len(time_) == 4:
+        return int(time_[:2]) * 60 + int(time_[2:])
+    # Rare edge case containing hour too.
+    return int(time_[0]) * 3600 + int(time_[1:3]) * 60 + int(time_[3:]) 
 
 
 def get_averages(counts: list[int]) -> tuple[float, int]:
@@ -153,7 +161,7 @@ def parse_source(source: str) -> Data:
                 "a", href=lambda href: href and "athlete" in href))
         first_male_name = row["data-male"]
         if first_male_name:
-            first_male_time = mmss_to_seconds(row["data-maletime"])
+            first_male_time = first_time_to_seconds(row["data-maletime"])
             first_male_id = int(first_male_url.split("=")[1])
             first_male = FirstPlace(
                 first_male_id, first_male_name, first_male_time)
@@ -161,7 +169,7 @@ def parse_source(source: str) -> Data:
             first_male = None
         first_female_name = row["data-female"]
         if first_female_name:
-            first_female_time = mmss_to_seconds(row["data-femaletime"])
+            first_female_time = first_time_to_seconds(row["data-femaletime"])
             first_female_id = int(first_female_url.split("=")[1])
             first_female = FirstPlace(
                 first_female_id, first_female_name, first_female_time)
