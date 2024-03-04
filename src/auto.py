@@ -117,8 +117,10 @@ class AutomaticScraper(tk.Frame):
             options.add_argument(f"user-agent={USER_AGENT}")
             # Just to be safe, disguise bot further.
             options.add_experimental_option("useAutomationExtension", False)
-            options.add_experimental_option("excludeSwitches",["enable-automation"])
-            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_experimental_option(
+                "excludeSwitches", ["enable-automation"])
+            options.add_argument(
+                "--disable-blink-features=AutomationControlled")
             url = parse_url(self.url)
             with Chrome(options=options) as driver:
                 if self.cancelled:

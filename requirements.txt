@@ -1,0 +1,10 @@
+selenium # Automated scraping.
+beautifulsoup4 # HTML parsing.
+lxml # Fast parsing of data.
+
+matplotlib # Graphs
+openpyxl # Export to XLSX
+python-docx # Export to DOCX
+
+comtypes # Export to PDF on Windows
+docx2pdf # Export to PDF on MacOS

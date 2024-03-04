@@ -2,6 +2,8 @@
 Main module of the program - this consists of the GUI and
 various input and output screens.
 """
+import pathlib
+import sys
 import tkinter as tk
 from ctypes import windll
 from tkinter import messagebox
@@ -12,8 +14,14 @@ import manual
 import output
 
 
-windll.shcore.SetProcessDpiAwareness(1) # Enhanced GUI quality.
+windll.shcore.SetProcessDpiAwareness(True) # Enhanced GUI quality.
 TITLE = "Parkrun Data Scraper"
+if hasattr(sys, "_MEIPASS"):
+    # Executable
+    ICON_PATH = pathlib.Path(sys._MEIPASS) / "icon.ico"
+else:
+    # Through Python.
+    ICON_PATH = pathlib.Path(__file__).parent.parent / "icon.ico"
 
 
 class ParkrunScraper(tk.Tk):
@@ -23,6 +31,7 @@ class ParkrunScraper(tk.Tk):
         super().__init__()
         self.title(TITLE)
         self.resizable(False, False)
+        self.iconbitmap(ICON_PATH)
     
         self.notebook = ttk.Notebook(self)
         self.automatic_scraper = auto.AutomaticScraper(self.notebook)

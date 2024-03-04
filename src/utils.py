@@ -5,7 +5,7 @@ RED = "red"
 GREEN = "green"
 
 
-def hh_mm_ss_to_seconds(time_: str) -> int:
+def hhmmss_to_seconds(time_: str) -> int:
     """Converts HH:MM:SS into seconds."""
     hours, minutes, seconds = map(int, time_.split(":"))
     return hours * 3600 + minutes * 60 + seconds

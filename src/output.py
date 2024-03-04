@@ -19,7 +19,7 @@ from matplotlib import pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 import save
-from utils import hh_mm_ss_to_seconds, seconds_to_mmss
+from utils import hhmmss_to_seconds, seconds_to_mmss
 
 
 @dataclass
@@ -206,7 +206,7 @@ def parse_source(source: str) -> Data:
     finishers = int(get_stat_value(soup, "Finishers:").replace(",", ""))
     volunteers = int(get_stat_value(soup, "Volunteers:").replace(",", ""))
     personal_bests = int(get_stat_value(soup, "PBs:").replace(",", ""))
-    mean_finish_seconds = hh_mm_ss_to_seconds(
+    mean_finish_seconds = hhmmss_to_seconds(
         get_stat_value(soup, "Average finish time:"))
     groups = int(get_stat_value(soup, "Groups:").replace(",", ""))
     email = soup.find("a", href=lambda href: href and "mailto" in href).text
